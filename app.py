@@ -1,15 +1,17 @@
 import asyncio
-import logging
+# import logging
 import json
 import time
-from pprint import pprint
-from feedsearch_crawler import search, FeedsearchSpider, output_opml, sort_urls
+# from pprint import pprint
+from feedsearch_crawler import FeedsearchSpider, sort_urls
+# from feedsearch_crawler import search, output_opml
 from feedsearch_crawler.crawler import coerce_url
-from datetime import datetime
-import collections
+# from datetime import datetime
+# import collections
+import sys
 
 urls = [
-    # "arstechnica.com",
+    "arstechnica.com",
     # "https://davidbeath.com",
     # "http://xkcd.com",
     # "http://jsonfeed.org",
@@ -54,7 +56,7 @@ urls = [
     # "www.internet-law.de",
     # "https://medium.com/zendesk-engineering/the-joys-of-story-estimation-cda0cd807903",
     # "https://danwang.co/",
-    "http://matthewdickens.me/podcasts/TWIS-feed.xml"
+    # "http://matthewdickens.me/podcasts/TWIS-feed.xml"
 ]
 
 
@@ -114,29 +116,29 @@ def run_crawl():
     results = get_pretty_print(serialized)
     print(results)
 
-    site_metas = [item.serialize() for item in crawler.site_metas]
-    metas = get_pretty_print(site_metas)
-    print(metas)
+    # site_metas = [item.serialize() for item in crawler.site_metas]
+    # metas = get_pretty_print(site_metas)
+    # print(metas)
     # pprint(site_metas)
 
-    pprint(crawler.favicons)
-    pprint(crawler._duplicate_filter.fingerprints)
+    # pprint(crawler.favicons)
+    # pprint(crawler._duplicate_filter.fingerprints)
 
-    print(output_opml(items).decode())
+    # print(output_opml(items).decode())
 
-    pprint([result["url"] for result in serialized])
-    pprint(crawler.get_stats())
+    # pprint([result["url"] for result in serialized])
+    # pprint(crawler.get_stats())
 
-    print(f"Feeds found: {len(items)}")
-    print(f"SiteMetas: {len(crawler.site_metas)}")
-    print(f"Favicons fetched: {len(crawler.favicons)}")
+    # print(f"Feeds found: {len(items)}")
+    # print(f"SiteMetas: {len(crawler.site_metas)}")
+    # print(f"Favicons fetched: {len(crawler.favicons)}")
     # pprint(crawler.queue_wait_times)
-    pprint(list((x.score, x.url) for x in items))
+    # pprint(list((x.score, x.url) for x in items))
 
 
-def create_allowed_domains(urls):
+def create_allowed_domains(urls_p):
     domain_patterns = []
-    for url in urls:
+    for url in urls_p:
         url = coerce_url(url)
         host = url.host
         pattern = f"*.{host}"
@@ -146,23 +148,19 @@ def create_allowed_domains(urls):
 
 
 if __name__ == "__main__":
-    logger = logging.getLogger("feedsearch_crawler")
-    logger.setLevel(logging.DEBUG)
-    ch = logging.StreamHandler()
-    ch.setLevel(logging.DEBUG)
-    formatter = logging.Formatter(
-        "%(asctime)s - %(levelname)s - %(name)s - %(message)s [in %(pathname)s:%(lineno)d]"
-    )
-    ch.setFormatter(formatter)
-    fl = logging.FileHandler(
-        f"/home/dbeath/code/feedsearch-crawler/logs/feedsearch_crawl_{datetime.utcnow().isoformat()}"
-    )
-    fl.setLevel((logging.DEBUG))
-    fl.setFormatter(formatter)
-    logger.addHandler(ch)
-    logger.addHandler(fl)
+    # logger = logging.getLogger("feedsearch_crawler")
+    # logger.setLevel(logging.ERROR)
+    # ch = logging.StreamHandler()
+    # ch.setLevel(logging.ERROR)
+    # formatter = logging.Formatter("%(asctime)s - %(levelname)s - %(name)s - %(message)s [in %(pathname)s:%(lineno)d]")
+    # ch.setFormatter(formatter)
+    # logger.addHandler(ch)
 
-    start = time.perf_counter()
-    run_crawl()
-    duration = int((time.perf_counter() - start) * 1000)
-    print(f"Entire process ran in {duration}ms")
+    # start = time.perf_counter()
+    if len(sys.argv) > 1:
+        urls = sys.argv[1:]
+        print(urls)
+        run_crawl()
+
+    # duration = int((time.perf_counter() - start) * 1000)
+    # print(f"Entire process ran in {duration}ms")

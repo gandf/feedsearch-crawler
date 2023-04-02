@@ -74,7 +74,7 @@ class Request(Queueable):
         self.request_session = request_session
         self.headers = headers
         if not isinstance(timeout, ClientTimeout):
-            timeout = aiohttp.ClientTimeout(total=self.timeout)
+            timeout = aiohttp.ClientTimeout(total=timeout)
         self.timeout = timeout
         self.history = history or []
         self.encoding = encoding

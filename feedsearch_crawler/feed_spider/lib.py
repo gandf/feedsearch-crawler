@@ -29,8 +29,8 @@ def create_allowed_domains(url: Union[str, URL]) -> List[str]:
 def parse_header_links(value):
     """
     Return a list of Dicts of parsed link headers proxies.
-    i.e. Link: <http:/.../front.jpeg>; rel=front; type="image/jpeg",
-    <http://.../back.jpeg>; rel=back;type="image/jpeg"
+    i.e. Link: <https:/.../front.jpeg>; rel=front; type="image/jpeg",
+    <https://.../back.jpeg>; rel=back;type="image/jpeg"
 
     :param value: HTTP Link header to parse
     :return: List of Dicts

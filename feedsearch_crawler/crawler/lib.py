@@ -210,15 +210,6 @@ def ignore_aiohttp_ssl_error(loop, aiohttpversion="3.5.4"):
     import aiohttp
     import asyncio
 
-    try:
-        # noinspection PyUnresolvedReferences
-        import uvloop
-
-        protocol_class = uvloop.loop.SSLProtocol
-    except ImportError:
-        protocol_class = asyncio.sslproto.SSLProtocol
-        pass
-
     if aiohttpversion is not None and aiohttp.__version__ != aiohttpversion:
         return
 
@@ -234,7 +225,7 @@ def ignore_aiohttp_ssl_error(loop, aiohttpversion="3.5.4"):
             if (
                 isinstance(exception, ssl.SSLError)
                 and exception.reason == "KRB5_S_INIT"
-                and isinstance(protocol, protocol_class)
+                and isinstance(protocol, uvloop.loop.SSLProtocol)
             ):
                 if this_loop.get_debug():
                     asyncio.log.logger.debug("Ignoring aiohttp SSL KRB5_S_INIT error")
