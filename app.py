@@ -11,7 +11,7 @@ from feedsearch_crawler.crawler import coerce_url
 import sys
 
 urls = [
-    "arstechnica.com",
+    # "arstechnica.com",
     # "https://davidbeath.com",
     # "http://xkcd.com",
     # "http://jsonfeed.org",
@@ -159,7 +159,6 @@ if __name__ == "__main__":
     # start = time.perf_counter()
     if len(sys.argv) > 1:
         urls = sys.argv[1:]
-        print(urls)
         run_crawl()
 
     # duration = int((time.perf_counter() - start) * 1000)
