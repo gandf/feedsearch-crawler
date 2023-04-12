@@ -1,6 +1,7 @@
 import base64
 import logging
-from typing import Union, Any, List, Set, AsyncGenerator
+from types import AsyncGeneratorType
+from typing import Union, Any, List, Set
 
 import bs4
 from yarl import URL
@@ -45,9 +46,7 @@ class FeedsearchSpider(Crawler):
         if "crawl_hosts" in kwargs:
             self.crawl_hosts = kwargs["crawl_hosts"]
 
-    async def parse_response(
-        self, request: Request, response: Response
-    ) -> AsyncGenerator[Any, Any]:
+    async def parse(self, request: Request, response: Response) -> AsyncGeneratorType:
         """
         Parse a Response for feeds or site metadata.
 
@@ -106,17 +105,13 @@ class FeedsearchSpider(Crawler):
             values = link_filter.should_follow_link(link)
             if values:
                 url, priority = values
-                yield self.follow(
-                    url,
-                    self.parse_response,
-                    response,
-                    priority=priority,
-                    allow_domain=True,
+                yield await self.follow(
+                    url, self.parse, response, priority=priority, allow_domain=True
                 )
 
     async def parse_site_meta(
         self, request: Request, response: Response
-    ) -> AsyncGenerator[Any, Any]:
+    ) -> AsyncGeneratorType:
         """
         Parses site metadata if the returned URL is a site origin URL.
 

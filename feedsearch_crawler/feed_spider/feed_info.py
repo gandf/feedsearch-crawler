@@ -1,5 +1,5 @@
 from datetime import datetime
-from typing import List, Union
+from typing import List
 
 from yarl import URL
 
@@ -11,7 +11,7 @@ class FeedInfo(Item):
     content_length: int = 0
     content_type: str = ""
     description: str = ""
-    favicon: Union[URL, None] = None
+    favicon: URL = ""
     favicon_data_uri: str = ""
     hubs: List[str] = []
     is_podcast: bool = False
@@ -19,11 +19,11 @@ class FeedInfo(Item):
     item_count: int = 0
     last_updated: datetime = None
     score: int = 0
-    self_url: Union[URL, None] = None
+    self_url: URL = ""
     site_name: str = ""
-    site_url: Union[URL, None] = None
+    site_url: URL = ""
     title: str = ""
-    url: Union[URL, None] = None
+    url: URL = ""
     velocity: float = 0
     version: str = ""
 

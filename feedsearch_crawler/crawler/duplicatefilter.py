@@ -1,6 +1,5 @@
 import asyncio
 import hashlib
-from typing import Dict
 
 from yarl import URL
 
@@ -14,11 +13,11 @@ class DuplicateFilter:
 
     def __init__(self):
         # Dictionary whose keys are the hashed fingerprints of the URLs
-        self.fingerprints: Dict[str, str] = {}
+        self.fingerprints = dict()
         # Locks the fingerprints dict when accessing keys.
         self._seen_lock = asyncio.Lock()
 
-    async def is_url_seen(self, url: URL, method: str = "") -> bool:
+    async def url_seen(self, url: URL, method: str = "") -> bool:
         """
         Checks if the URL has already been seen, and adds the URL fingerprint if not.
 
@@ -26,13 +25,22 @@ class DuplicateFilter:
         :param method: Optional HTTP method to use for hashing
         :return: True if URL already seen
         """
-        url_str: str = str(url)
-        fp: str = self.url_fingerprint_hash(url_str, method)
+        url_str: str = self.parse_url(url)
+        fp = self.url_fingerprint_hash(url_str, method)
         async with self._seen_lock:
             if fp in self.fingerprints:
                 return True
             self.fingerprints[fp] = url_str
             return False
+
+    def parse_url(self, url: URL) -> str:
+        """
+        Parse the URL object to a string. Used for functionality such as filtering query strings.
+
+        :param url: URL object
+        :return: URL as string
+        """
+        return str(url)
 
     @staticmethod
     def url_fingerprint_hash(url: str, method: str = "") -> str:

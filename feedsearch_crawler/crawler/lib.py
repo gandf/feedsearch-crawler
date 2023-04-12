@@ -1,11 +1,8 @@
 import logging
-from asyncio import Event, Queue
+from asyncio import PriorityQueue
 from dataclasses import dataclass
 from enum import Enum
 from typing import Any, Union, Dict
-import heapq
-import re
-from typing import List
 
 from yarl import URL
 
@@ -14,36 +11,11 @@ from feedsearch_crawler.crawler.queueable import Queueable
 logger = logging.getLogger(__name__)
 
 
-class ContentLengthError(Exception):
-    """Content Length is too long."""
-
-    def __init__(self, max_content_length: int, *args: object) -> None:
-        self.max_content_length = max_content_length
-        super().__init__(*args)
-
-
-class ContentReadError(Exception):
-    """Response Content was not read."""
-
-
-class CrawlerPriorityQueue(Queue[Queueable]):
-    """A subclass of Queue; retrieves entries in priority order (lowest first).
-    Entries are typically tuples of the form: (priority number, data).
-    """
-
+# noinspection PyUnresolvedReferences
+class CrawlerPriorityQueue(PriorityQueue):
     _unfinished_tasks: int
-    _finished: Event
 
-    def _init(self, maxsize: int) -> None:
-        self._queue: list[Queueable] = []
-
-    def _put(self, item: Queueable, heappush: Any = heapq.heappush) -> None:
-        heappush(self._queue, item)
-
-    def _get(self, heappop: Any = heapq.heappop) -> Queueable:
-        return heappop(self._queue)
-
-    def clear(self) -> None:
+    def clear(self):
         """
         Clear the Queue of any unfinished tasks.
         """
@@ -136,7 +108,7 @@ class Stats(Enum):
     def __str__(self):
         return str(self.value)
 
-    def __lt__(self, other: Any):
+    def __lt__(self, other):
         if not isinstance(other, Stats):
             return False
         return self.value < other.value
@@ -171,7 +143,7 @@ def coerce_url(
     return url
 
 
-def to_bytes(text: str, encoding: str = "utf-8", errors: str = "strict"):
+def to_bytes(text, encoding: str = "utf-8", errors: str = "strict"):
     """Return the binary representation of `text`. If `text`
     is already a bytes object, return it as-is."""
     if not text:
@@ -192,7 +164,7 @@ def to_string(item: Any, encoding: str = "utf-8", errors: str = "strict") -> str
     return str(item)
 
 
-def case_insensitive_key(key: str, dictionary: Dict[str, Any]) -> bool:
+def case_insensitive_key(key: str, dictionary: Dict) -> bool:
     """
     Check if a case-insensitive key is in a dictionary.
     """
@@ -200,7 +172,6 @@ def case_insensitive_key(key: str, dictionary: Dict[str, Any]) -> bool:
     for key in dictionary.keys():
         if key.lower() == k:
             return True
-    return False
 
 
 def headers_to_dict(headers: Any) -> Dict[str, str]:
@@ -210,7 +181,10 @@ def headers_to_dict(headers: Any) -> Dict[str, str]:
     :param headers: Dict subclass of HTTP headers
     :return: Dict of HTTP headers
     """
-    new_headers: Dict[str, str] = {}
+    if isinstance(headers, dict):
+        return headers
+
+    new_headers = {}
     try:
         new_headers.update({k.lower(): v for (k, v) in headers.items()})
     except Exception as e:
@@ -219,7 +193,7 @@ def headers_to_dict(headers: Any) -> Dict[str, str]:
     return new_headers
 
 
-def ignore_aiohttp_ssl_error(loop: Any, aiohttpversion: str ="3.5.4"):
+def ignore_aiohttp_ssl_error(loop, aiohttpversion="3.5.4"):
     """Ignore aiohttp #3535 issue with SSL data after close
      There appears to be an issue on Python 3.7 and aiohttp SSL that throws a
     ssl.SSLError fatal error (ssl.SSLError: [SSL: KRB5_S_INIT] application data
@@ -236,13 +210,13 @@ def ignore_aiohttp_ssl_error(loop: Any, aiohttpversion: str ="3.5.4"):
     import aiohttp
     import asyncio
 
-    if aiohttpversion and aiohttp.__version__ != aiohttpversion:
+    if aiohttpversion is not None and aiohttp.__version__ != aiohttpversion:
         return
 
     orig_handler = loop.get_exception_handler()
 
     # noinspection PyUnresolvedReferences
-    def ignore_ssl_error(this_loop: Any, context: Any):
+    def ignore_ssl_error(this_loop, context):
         errors = ["SSL error", "Fatal error"]
         if any(x in context.get("message") for x in errors):
             # validate we have the right exception, transport and protocol
@@ -274,6 +248,9 @@ def parse_href_to_url(href: str) -> Union[URL, None]:
     if not href:
         return None
 
+    if not isinstance(href, str):
+        raise TypeError("href must be string")
+
     try:
         return URL(href)
     except (UnicodeError, ValueError) as e:
@@ -293,7 +270,7 @@ def remove_www(host: str) -> str:
     return host
 
 
-def is_same_domain(root_domain: Union[str, None], url_domain: Union[str, None]) -> bool:
+def is_same_domain(root_domain: str, url_domain: str) -> bool:
     """
     Check if the url domain is the same or a subdomain of the root domain.
 
@@ -301,73 +278,4 @@ def is_same_domain(root_domain: Union[str, None], url_domain: Union[str, None]) 
     :param url_domain: Domain of the url to filter
     :return: boolean
     """
-    if not root_domain or not url_domain:
-        return False
     return remove_www(root_domain) in url_domain
-
-
-def parse_robots_txt(robots_txt: str, user_agent: str) -> List[str]:
-    """
-    Parses a robots.txt file and returns a list of disallowed paths.
-    Args:
-      robots_txt: The robots.txt file, as a string.
-    Returns:
-      A list of the the paths that are not allowed to be crawled.
-    """
-    # Create a regex pattern to match the "Disallow" lines in the robots.txt file
-    disallow_pattern = re.compile(r"^Disallow:\.*(.*)$", re.MULTILINE)
-
-    # Create a list to store the disallowed paths
-    disallowed_paths: List[str] = []
-
-    # Split the robots.txt file into lines
-    lines = robots_txt.split("\n")
-
-    # Flag to indicate whether we're currently in the section of the file that applies to our user-agent
-    in_our_section = False
-
-    # Loop through each line of the robots.txt file
-    for line in lines:
-        # If this line is the start of a section for a user-agent, check if it's our user-agent
-        if line.startswith("User-agent:"):
-            # Check if this user-agent section applies to our user-agent
-            in_our_section = line.strip().endswith(user_agent) or line.strip().endswith(
-                "*"
-            )
-        # If this line is a "Disallow" line and we're currently in our user-agent section,
-        # add the disallowed path to our list
-        elif in_our_section:
-            disallowed = disallow_pattern.match(line)
-            if disallowed:
-                disallowed_paths.append(disallowed.group(1))
-
-    # Return the list of disallowed paths
-    return disallowed_paths
-
-
-def parse_sitemap(sitemap_xml: str) -> List[str]:
-    """Parses a sitemap XML file and returns the URLs of any RSS or Atom feeds.
-    Args:
-      sitemap_xml: The sitemap XML file, as a string.
-    Returns:
-      A list of URLs of the RSS or Atom feeds that are included in the sitemap.
-    """
-
-    # Create a regex pattern to match the "loc" elements in the sitemap
-    loc_pattern = re.compile(r"<loc>(.*?)</loc>")
-
-    # Create a list to store the URLs of the feeds
-    feed_urls: List[str] = []
-
-    # Use the regex pattern to find all the "loc" elements in the sitemap
-    for loc_element in loc_pattern.finditer(sitemap_xml):
-        # Get the URL from the "loc" element
-        url = loc_element.group(1)
-        # If the URL ends with ".rss" or ".xml", it's an RSS feed URL
-        # If the URL ends with ".atom", it's an Atom feed URL
-        if url.endswith(".rss") or url.endswith(".xml") or url.endswith(".atom"):
-            # Add it to the list of feed URLs
-            feed_urls.append(url)
-
-    # Return the list of feed URLs
-    return feed_urls

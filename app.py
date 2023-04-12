@@ -93,7 +93,7 @@ def run_crawl():
         user_agent=user_agent,
         # headers=headers,
         favicon_data_uri=False,
-        max_depth=8,
+        max_depth=5,
         max_retries=3,
         ssl=True,
         full_crawl=False,

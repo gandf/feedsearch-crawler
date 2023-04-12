@@ -6,12 +6,13 @@ from abc import ABC, abstractmethod
 from collections import OrderedDict
 from fnmatch import fnmatch
 from statistics import harmonic_mean, median
-from typing import AsyncGenerator, Callable, Coroutine, Final, List, Any, Dict, Optional, Set
+from types import AsyncGeneratorType
+from typing import List, Any, Dict, Set
 from typing import Union
 
 import aiohttp
 import time
-from aiohttp import ClientTimeout, TraceConfig
+from aiohttp import ClientTimeout
 from yarl import URL
 
 from feedsearch_crawler.crawler.duplicatefilter import DuplicateFilter
@@ -40,10 +41,6 @@ except ImportError:
 
 logger = logging.getLogger(__name__)
 
-DEFAULT_TOTAL_TIMEOUT: Final[float] = 30.0
-DEFAULT_REQUEST_TIMEOUT: Final[float] = 5.0
-DEFAULT_MAX_CONTENT_LENGTH: Final[int] = 1024 * 1024 * 10
-
 
 class Crawler(ABC):
 
@@ -56,7 +53,7 @@ class Crawler(ABC):
     post_crawl_callback = None
 
     # URLs to start the crawl.
-    start_urls: List[Union[str, URL]] = []
+    start_urls = []
     # Domain patterns that are allowed to be crawled.
     allowed_domains = []
 
@@ -83,16 +80,16 @@ class Crawler(ABC):
 
     def __init__(
         self,
-        start_urls: List[Union[str, URL]] = [],
-        allowed_domains: List[str] = [],
+        start_urls: List[str] = None,
+        allowed_domains: List[str] = None,
         concurrency: int = 10,
-        total_timeout: Union[float, ClientTimeout] = DEFAULT_TOTAL_TIMEOUT,
-        request_timeout: Union[float, ClientTimeout] = DEFAULT_REQUEST_TIMEOUT,
+        total_timeout: Union[float, ClientTimeout] = 30,
+        request_timeout: Union[float, ClientTimeout] = 5,
         user_agent: str = "",
-        max_content_length: int = DEFAULT_MAX_CONTENT_LENGTH,
+        max_content_length: int = 1024 * 1024 * 10,
         max_depth: int = 10,
-        headers: dict = [],
-        allowed_schemes: List[str] = [],
+        headers: dict = None,
+        allowed_schemes: List[str] = None,
         delay: float = 0.5,
         max_retries: int = 3,
         ssl: bool = False,
@@ -127,9 +124,9 @@ class Crawler(ABC):
         self.concurrency = concurrency
 
         if not isinstance(total_timeout, ClientTimeout):
-            total_timeout = ClientTimeout(total=float(total_timeout))
+            total_timeout = aiohttp.ClientTimeout(total=total_timeout)
         if not isinstance(request_timeout, ClientTimeout):
-            request_timeout = ClientTimeout(total=float(request_timeout))
+            request_timeout = aiohttp.ClientTimeout(total=request_timeout)
 
         self.total_timeout: ClientTimeout = total_timeout
         self.request_timeout: ClientTimeout = request_timeout
@@ -153,24 +150,24 @@ class Crawler(ABC):
         self._trace = trace
 
         # Default set for parsed items.
-        self.items: set[Item] = set()
+        self.items: set = set()
 
         # URL Duplicate Filter instance.
         self._duplicate_filter = self.duplicate_filter_class()
 
         # List of total durations in Milliseconds for the total handling time of all Requests.
-        self._stats_request_durations: list[int] = []
+        self._stats_request_durations = []
         # List of total duration in Milliseconds of all HTTP requests.
-        self._stats_request_latencies: list[int] = []
+        self._stats_request_latencies = []
         # List of Content Length in bytes of all Responses.
-        self._stats_response_content_lengths: list[int] = []
+        self._stats_response_content_lengths = []
         # List of time in Milliseconds that each item spend on the queue.
-        self._stats_queue_wait_times: list[int] = []
+        self._stats_queue_wait_times = []
         # List of the size of the queue each time an item was popped off the queue.
-        self._stats_queue_sizes: list[int] = []
+        self._stats_queue_sizes = []
 
         # Initialise Crawl Statistics.
-        self.stats: Dict[Stats, Any] = {
+        self.stats: dict = {
             Stats.REQUESTS_QUEUED: 0,
             Stats.REQUESTS_SUCCESSFUL: 0,
             Stats.REQUESTS_FAILED: 0,
@@ -244,7 +241,7 @@ class Crawler(ABC):
 
             # Mark the Response URL as seen in the duplicate filter, as it may be different from the Request URL
             # due to redirects.
-            await self._duplicate_filter.is_url_seen(response.url, response.method)
+            await self._duplicate_filter.url_seen(response.url, response.method)
 
             # Add callback results to the queue for processing.
             if results:
@@ -263,15 +260,7 @@ class Crawler(ABC):
             return
 
     async def _process_request_callback_result(
-        self,
-        result: Union[
-            CallbackResult,
-            AsyncGenerator[Any, Any],
-            Coroutine[Any, Any, Any],
-            Request,
-            Item,
-        ],
-        callback_recursion: int = 0,
+        self, result: Any, callback_recursion: int = 0
     ) -> None:
         """
         Process the Request callback result depending on the result type.
@@ -355,18 +344,18 @@ class Crawler(ABC):
     async def follow(
         self,
         url: Union[str, URL],
-        callback: Callable,
-        response: Optional[Response] = None,
-        max_content_length: Optional[int] = None,
-        timeout: Optional[float] = None,
+        callback=None,
+        response: Response = None,
         method: str = "GET",
-        delay: float = 0,
+        delay: Union[float, None] = None,
         priority: int = 0,
         allow_domain: bool = False,
-        cb_kwargs: Dict = {},
-        retries: int = 0,
+        cb_kwargs: Dict = None,
+        max_content_length: int = None,
+        timeout: float = None,
+        retries: int = None,
         **kwargs,
-    ) -> Optional[Request]:
+    ) -> Union[Request, None]:
         """
         Follow a URL by creating an HTTP Request.
 
@@ -395,26 +384,19 @@ class Crawler(ABC):
         :return: Request
         """
         original_url = copy.copy(url)
-        request_url: URL
         if isinstance(url, str):
-            parsed_url: Union[URL, None] = parse_href_to_url(url)
-            if not parsed_url:
-                logger.warning("Cannot parse str to URL: %s", original_url)
-                return
-            request_url = parsed_url
-        else:
-            request_url = url
+            url = parse_href_to_url(url)
 
-        if not request_url:
+        if not url:
             logger.warning("Attempted to follow invalid URL: %s", original_url)
             return
 
-        history: List[URL] = []
+        history = []
         if response:
             # Join the URL to the Response URL if it doesn't contain a domain.
-            if not request_url.is_absolute() or not request_url.scheme:
-                request_url = coerce_url(
-                    response.origin.join(request_url), default_scheme=response.scheme
+            if not url.is_absolute() or not url.scheme:
+                url = coerce_url(
+                    response.origin.join(url), default_scheme=response.scheme
                 )
 
             # Restrict the depth of the Request chain to the maximum depth.
@@ -426,29 +408,29 @@ class Crawler(ABC):
             # Copy the Response history so that it isn't a reference to a mutable object.
             history = copy.deepcopy(response.history)
         else:
-            if not request_url.is_absolute():
+            if not url.is_absolute():
                 logger.debug("URL should have domain: %s", url)
                 return
 
-            if not request_url.scheme:
+            if not url.scheme:
                 url = coerce_url(url)
 
         # The URL scheme must be in the list of allowed schemes.
-        if self.allowed_schemes and request_url.scheme not in self.allowed_schemes:
-            logger.debug("URI Scheme '%s' not allowed: %s", request_url.scheme, url)
+        if self.allowed_schemes and url.scheme not in self.allowed_schemes:
+            logger.debug("URI Scheme '%s' not allowed: %s", url.scheme, url)
             return
 
         # The URL host must be in the list of allowed domains.
-        if not allow_domain and not self.is_allowed_domain(request_url):
-            logger.debug("Domain '%s' not allowed: %s", request_url.host, url)
+        if not allow_domain and not self.is_allowed_domain(url):
+            logger.debug("Domain '%s' not allowed: %s", url.host, url)
             return
 
         # Check if URL is not already seen, and add it to the duplicate filter seen list.
-        if await self._duplicate_filter.is_url_seen(request_url, method):
+        if await self._duplicate_filter.url_seen(url, method):
             return
 
         request = Request(
-            url=request_url,
+            url=url,
             request_session=self._session,
             history=history,
             callback=callback,
@@ -456,7 +438,7 @@ class Crawler(ABC):
             max_content_length=max_content_length or self.max_content_length,
             timeout=timeout or self.request_timeout,
             method=method,
-            delay=delay if delay else self.delay,
+            delay=delay if isinstance(delay, float) else self.delay,
             retries=retries or self.max_retries,
             cb_kwargs=cb_kwargs,
             **kwargs,
@@ -488,9 +470,7 @@ class Crawler(ABC):
         raise NotImplementedError("Not Implemented")
 
     @abstractmethod
-    def parse_response(
-            self, request: Request, response: Response
-    ) -> AsyncGenerator[Any, Any]:
+    async def parse(self, request: Request, response: Response) -> AsyncGeneratorType:
         """
         Parse an HTTP Response. Must yield Items, Requests, AsyncGenerators, or Coroutines.
 
@@ -505,11 +485,13 @@ class Crawler(ABC):
 
         :param queueable: An object that inherits from Queueable.
         """
-        queueable.set_queue_put_time()
-        self._request_queue.put_nowait(queueable)
+        if not isinstance(queueable, Queueable):
+            raise ValueError("Object must inherit from Queueable Class")
+
+        queueable.add_to_queue(self._request_queue)
         self.stats[Stats.QUEUED_TOTAL] += 1
 
-    async def _work(self, task_num: int) -> None:
+    async def _work(self, task_num):
         """
         Worker function for handling request queue items.
         """
@@ -517,9 +499,12 @@ class Crawler(ABC):
             while True:
                 self._stats_queue_sizes.append(self._request_queue.qsize())
                 item: Queueable = await self._request_queue.get()
-
-                if item_wait_time := item.get_queue_wait_time():
-                    self._stats_queue_wait_times.append(item_wait_time)
+                # logger.debug("Priority: %s Item: %s", item.priority, item)
+                if item.get_queue_wait_time():
+                    # logger.debug(
+                    #     "Waited: %sms Item: %s", item.get_queue_wait_time(), item
+                    # )
+                    self._stats_queue_wait_times.append(item.get_queue_wait_time())
 
                 if self._session.closed:
                     logger.debug("Session is closed. Cannot run %s", item)
@@ -640,14 +625,14 @@ class Crawler(ABC):
             sum(self._stats_request_latencies)
         )
 
-    def get_stats(self) -> Dict[str, Any]:
+    def get_stats(self) -> dict:
         """
         Return crawl statistics as a sorted dictionary.
         """
         stats = {str(k): v for k, v in self.stats.items()}
         return dict(OrderedDict(sorted(stats.items())).items())
 
-    async def crawl(self, urls: Union[URL, str, List[Union[URL, str]]] = []) -> None:
+    async def crawl(self, urls: Union[URL, str, List[Union[URL, str]]] = None) -> None:
         """
         Start the web crawler.
 
@@ -664,9 +649,9 @@ class Crawler(ABC):
             urls = []
         if isinstance(urls, (URL, str)):
             urls = [urls]
-        initial_urls = self.create_start_urls(urls)
+        self.start_urls = self.create_start_urls(urls)
 
-        if not initial_urls:
+        if not self.start_urls:
             raise ValueError("crawler.start_urls are required")
 
         # Create the Request Queue within the asyncio loop.
@@ -675,17 +660,12 @@ class Crawler(ABC):
         # Create the Semaphore for controlling HTTP Request concurrency within the asyncio loop.
         self._semaphore = asyncio.Semaphore(self.concurrency)
 
-        trace_configs: List[TraceConfig] = []
+        trace_configs = []
         if self._trace:
             trace_configs.append(add_trace_config())
 
-        ttl_dns_cache: float = (
-            self.total_timeout.total
-            if self.total_timeout.total is not None
-            else DEFAULT_TOTAL_TIMEOUT
-        )
         conn = aiohttp.TCPConnector(
-            limit=0, ssl=self._ssl, ttl_dns_cache=int(ttl_dns_cache)
+            limit=0, ssl=self._ssl, ttl_dns_cache=self.total_timeout.total
         )
         # Create the ClientSession for HTTP Requests within the asyncio loop.
         self._session = aiohttp.ClientSession(
@@ -696,8 +676,8 @@ class Crawler(ABC):
         )
 
         # Create a Request for each start URL and add it to the Request Queue.
-        for url in initial_urls:
-            req = await self.follow(coerce_url(url), self.parse_response, delay=0)
+        for url in self.start_urls:
+            req = await self.follow(coerce_url(url), self.parse, delay=0)
             if req:
                 self._process_request(req)
 

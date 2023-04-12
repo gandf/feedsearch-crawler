@@ -1,14 +1,9 @@
 import uuid
-import logging
-from typing import List, Dict, Any, Optional, Union
-from multidict import CIMultiDictProxy
+from typing import List, Dict, Any, Optional
 
 from yarl import URL
 
 from feedsearch_crawler.crawler.lib import is_same_domain
-
-
-logger = logging.getLogger(__name__)
 
 
 class Response:
@@ -18,18 +13,18 @@ class Response:
         self,
         url: URL,
         method: str,
-        headers: Union[CIMultiDictProxy[str], dict],
-        status_code: int = -1,
         encoding: str = "",
         text: str = "",
-        json: Dict = {},
+        json: Dict = None,
         data: bytes = b"",
-        history: List[URL] = [],
+        history: List[URL] = None,
+        headers=None,
+        status_code: int = -1,
         cookies=None,
         xml_parser=None,
         redirect_history=None,
         content_length: int = 0,
-        meta: Dict = {},
+        meta: Dict = None,
     ):
         self.url = url
         self.encoding = encoding
@@ -37,8 +32,8 @@ class Response:
         self.text = text
         self.json = json
         self.data = data
-        self.history = history
-        self.headers = headers
+        self.history = history or []
+        self.headers = headers or {}
         self.status_code = status_code
         self.cookies = cookies
         self.id = uuid.uuid4()
@@ -53,7 +48,7 @@ class Response:
         return self.status_code == 0 or 200 <= self.status_code <= 299
 
     @property
-    def domain(self) -> Optional[str]:
+    def domain(self) -> str:
         return self.url.host
 
     @property
@@ -61,7 +56,7 @@ class Response:
         return self.url.scheme
 
     @property
-    def previous_domain(self) -> Optional[str]:
+    def previous_domain(self) -> str:
         if not self.history:
             return ""
         return self.history[-1].host
@@ -78,19 +73,12 @@ class Response:
             return self._xml
 
         if not self._xml_parser:
-            return self._xml
+            return None
 
         if not self.text and self.data and self.encoding:
-            try:
-                self.text = self.data.decode(self.encoding)
-            except UnicodeDecodeError as e:
-                logger.exception("Error decoding data to %s: %s", self.encoding, e)
-                return self._xml
+            self.text = self.data.decode(self.encoding)
 
-        try:
-            self._xml = await self._xml_parser(self.text)
-        except Exception as e:
-            logger.exception("Error parsing response xml: %s", e)
+        self._xml = await self._xml_parser(self.text)
         return self._xml
 
     def is_max_depth_reached(self, max_depth: int) -> bool:
