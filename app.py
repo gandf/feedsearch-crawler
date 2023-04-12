@@ -87,14 +87,14 @@ def run_crawl():
     # }
 
     crawler = FeedsearchSpider(
-        concurrency=10,
+        concurrency=12,
         total_timeout=30,
         request_timeout=30,
         user_agent=user_agent,
         # headers=headers,
         favicon_data_uri=False,
         max_depth=8,
-        max_retries=3,
+        max_retries=2,
         ssl=True,
         full_crawl=False,
         delay=0,

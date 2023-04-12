@@ -47,7 +47,6 @@ yarl = "^1.6.3"
 
 [tool.poetry.dev-dependencies]
 twine = "*"
-pytest = "*"
 
 [build-system]
 requires = ["poetry-core>=1.0.0"]
