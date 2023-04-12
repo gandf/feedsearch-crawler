@@ -1,7 +1,7 @@
 import asyncio
 # import logging
 import json
-import time
+# import time
 # from pprint import pprint
 from feedsearch_crawler import FeedsearchSpider, sort_urls
 # from feedsearch_crawler import search, output_opml
@@ -93,7 +93,7 @@ def run_crawl():
         user_agent=user_agent,
         # headers=headers,
         favicon_data_uri=False,
-        max_depth=5,
+        max_depth=8,
         max_retries=3,
         ssl=True,
         full_crawl=False,
