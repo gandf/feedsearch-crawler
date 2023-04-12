@@ -10,6 +10,7 @@ from typing import List, Tuple, Any, Union, Optional, Dict
 import aiohttp
 import time
 from aiohttp import ClientSession, ClientTimeout, hdrs
+from multidict import CIMultiDict, CIMultiDictProxy
 from yarl import URL
 
 from feedsearch_crawler.crawler.queueable import Queueable
@@ -25,21 +26,21 @@ class Request(Queueable):
         self,
         url: URL,
         request_session: ClientSession,
-        params: Dict = None,
-        data: Union[dict, bytes] = None,
-        json_data: Dict = None,
-        encoding: str = None,
+        params: Optional[Dict] = None,
+        data: Optional[Union[dict, bytes]] = None,
+        json_data: Optional[Dict] = None,
+        encoding: str = "",
         method: str = "GET",
-        headers: Dict = None,
+        headers: Optional[Dict] = None,
         timeout: Union[float, ClientTimeout] = 5.0,
-        history: List = None,
+        history: Optional[List[URL]] = None,
         callback=None,
         xml_parser=None,
         failure_callback=None,
         max_content_length: int = 1024 * 1024 * 10,
         delay: float = 0,
         retries: int = 3,
-        cb_kwargs: Dict = None,
+        cb_kwargs: Optional[Dict] = None,
         **kwargs,
     ):
         """
@@ -73,7 +74,7 @@ class Request(Queueable):
             raise ValueError(f"request_session must be of type ClientSession")
         self.request_session = request_session
         self.headers = headers
-        if not isinstance(timeout, ClientTimeout):
+        if isinstance(timeout, float):
             timeout = aiohttp.ClientTimeout(total=timeout)
         self.timeout = timeout
         self.history = history or []
@@ -103,7 +104,7 @@ class Request(Queueable):
             if hasattr(self, key):
                 setattr(self, key, value)
 
-    async def fetch_callback(self, semaphore: Semaphore = None) -> Tuple[Any, Response]:
+    async def fetch_callback(self, semaphore: Optional[Semaphore] = None) -> Tuple[Any, Response]:
         """
         Fetch HTTP Response and run Callbacks.
 
@@ -149,8 +150,8 @@ class Request(Queueable):
 
         try:
             async with self._create_request() as resp:
-                resp_recieved = time.perf_counter()
-                self.req_latency = int((resp_recieved - start) * 1000)
+                resp_received = time.perf_counter()
+                self.req_latency = int((resp_received - start) * 1000)
                 history.append(resp.url)
 
                 # Fail the response if the content length header is too large.
@@ -162,12 +163,12 @@ class Request(Queueable):
                         self.max_content_length,
                         self,
                     )
-                    return self._failed_response(413)
+                    return self._failed_response(413, history)
 
                 # Read the response content, and fail the response if the actual content size is too large.
                 content_read, actual_content_length = await self._read_response(resp)
                 if not content_read:
-                    return self._failed_response(413)
+                    return self._failed_response(413, history)
 
                 if content_length and content_length != actual_content_length:
                     logger.debug(
@@ -184,32 +185,32 @@ class Request(Queueable):
                 # Read response content
                 try:
                     # Read response content as text
-                    resp_text = await resp.text(encoding=self.encoding)
+                    resp_text: str = await resp.text(encoding=self.encoding)
 
                     # Attempt to read response content as JSON
-                    resp_json = await self._read_json(resp_text)
+                    resp_json: dict = await self._read_json(resp_text)
                 # If response content can't be decoded then neither text or JSON can be set.
                 except UnicodeDecodeError:
-                    resp_text = None
-                    resp_json = None
+                    resp_text: str = ""
+                    resp_json: dict = {}
 
                 # Close the asyncio response
                 if not resp.closed:
                     resp.close()
 
-                self.content_read = int((time.perf_counter() - resp_recieved) * 1000)
+                self.content_read = int((time.perf_counter() - resp_received) * 1000)
 
                 response = Response(
                     url=resp.url,
                     method=resp.method,
                     encoding=self.encoding,
+                    headers=resp.headers,
                     status_code=resp.status,
                     history=history,
                     text=resp_text,
                     data=resp._body,
                     json=resp_json,
-                    headers=resp.headers,
-                    xml_parser=self._parse_xml,
+                    xml_parser=self._xml_parser,
                     cookies=resp.cookies,
                     redirect_history=resp.history,
                     content_length=actual_content_length,
@@ -295,7 +296,7 @@ class Request(Queueable):
         return True, len(body)
 
     @staticmethod
-    async def _read_json(resp_text: Union[str, None]) -> Optional[dict]:
+    async def _read_json(resp_text: Union[str, None]) -> dict:
         """
         Attempt to read Response content as JSON.
 
@@ -305,19 +306,19 @@ class Request(Queueable):
 
         # If the text hasn't been parsed then we won't be able to parse JSON either.
         if not resp_text:
-            return None
+            return {}
 
         stripped = resp_text.strip()  # type: ignore
         if not stripped:
-            return None
+            return {}
 
         try:
             return json.loads(stripped)
         except ValueError:
-            return None
+            return {}
 
     def _failed_response(
-        self, status: int, history: List[URL] = None, headers=None
+        self, status: int, history: List[URL], headers=None
     ) -> Response:
         """
         Create a failed Response object with the provided Status Code.
@@ -331,23 +332,10 @@ class Request(Queueable):
             url=self.url,
             method=self.method,
             encoding=self.encoding,
+            headers=headers or {},
             history=history or [],
             status_code=status,
-            headers=headers or {},
         )
-
-    async def _parse_xml(self, response_text: str) -> Any:
-        """
-        Use provided XML Parsers method to attempt to parse Response content as XML.
-
-        :param response_text: Response content as text string.
-        :return: Response content as parsed XML. Type depends on XML parser.
-        """
-        try:
-            return await self._xml_parser(response_text)
-        except Exception as e:
-            logger.exception("Error parsing response xml: %s", e)
-            return None
 
     def set_retry(self) -> None:
         """

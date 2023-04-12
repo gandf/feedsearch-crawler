@@ -1,8 +1,7 @@
 import logging
 from datetime import datetime, date
 from statistics import mean
-from types import AsyncGeneratorType
-from typing import Tuple, List, Union, Dict
+from typing import AsyncGenerator, Tuple, List, Union, Dict
 
 import feedparser
 import time
@@ -27,7 +26,7 @@ logger = logging.getLogger(__name__)
 class FeedInfoParser(ItemParser):
     async def parse_item(
         self, request: Request, response: Response, *args, **kwargs
-    ) -> AsyncGeneratorType:
+    ) -> AsyncGenerator:
         logger.info("Parsing: Feed %s", response.url)
 
         if "parse_type" not in kwargs:
@@ -46,7 +45,9 @@ class FeedInfoParser(ItemParser):
         # Check link headers first for WebSub content discovery
         # https://www.w3.org/TR/websub/#discovery
         if response.headers:
-            item.hubs, item.self_url = self.header_links(response.headers)
+            hubs, self_url = self.header_links(response.headers)
+            item.hubs = hubs
+            item.self_url = URL(self_url)
 
         try:
             valid_feed = False
@@ -127,7 +128,7 @@ class FeedInfoParser(ItemParser):
         if item.hubs and item.self_url:
             item.is_push = True
 
-        item.version = parsed.get("version")
+        item.version = parsed.get("version", "")
         item.title = self.feed_title(feed)
         item.description = self.feed_description(feed)
         item.is_podcast = self.is_podcast(parsed)
@@ -162,7 +163,7 @@ class FeedInfoParser(ItemParser):
         :param data: JSON object
         :return: None
         """
-        item.version = data.get("version")
+        item.version = data.get("version", "")
         if "https://jsonfeed.org/version/" not in item.version:
             item.bozo = 1
             return False
@@ -170,8 +171,8 @@ class FeedInfoParser(ItemParser):
         if not data.get("items"):
             return False
 
-        item.title = data.get("title")
-        item.description = data.get("description")
+        item.title = data.get("title", "")
+        item.description = data.get("description", "")
 
         favicon = data.get("favicon")
         if favicon:
@@ -244,7 +245,7 @@ class FeedInfoParser(ItemParser):
             start = time.perf_counter()
 
             if isinstance(raw_data, str):
-                raw_data: bytes = raw_data.encode(encoding)
+                raw_data = raw_data.encode(encoding)
 
             raw_data = raw_data.strip()
             content_length = len(raw_data)
@@ -306,7 +307,7 @@ class FeedInfoParser(ItemParser):
 
         for entry in parsed.get("entries", []):
             for enclosure in entry.get("enclosures", []):
-                if "audio" in enclosure.get("type"):
+                if "audio" in enclosure.get("type", ""):
                     has_enclosures = True
 
         return has_itunes and has_enclosures
