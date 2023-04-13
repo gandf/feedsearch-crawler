@@ -1,5 +1,4 @@
 import base64
-import logging
 from types import AsyncGeneratorType
 from typing import Union, Any, List, Set
 
@@ -17,8 +16,6 @@ from feedsearch_crawler.feed_spider.link_filter import LinkFilter
 from feedsearch_crawler.feed_spider.regexes import rss_regex
 from feedsearch_crawler.feed_spider.site_meta import SiteMeta
 from feedsearch_crawler.feed_spider.site_meta_parser import SiteMetaParser
-
-logger = logging.getLogger(__name__)
 
 
 class FeedsearchSpider(Crawler):
@@ -68,7 +65,6 @@ class FeedsearchSpider(Crawler):
                 return
 
         if not isinstance(response.text, str):
-            logger.debug("No text in %s", response)
             return
 
         yield self.parse_site_meta(request, response)
@@ -82,7 +78,6 @@ class FeedsearchSpider(Crawler):
 
         # Don't waste time trying to parse and follow urls if the max depth is already reached.
         if response.is_max_depth_reached(self.max_depth):
-            logger.debug("Max depth %d reached: %s", self.max_depth, response)
             return
 
         # Make sure the Response XML has been parsed if it exists.
@@ -224,10 +219,9 @@ class FeedsearchSpider(Crawler):
 
         try:
             if not is_png(response.data) and not is_ico(response.data):
-                logger.debug("Response data is not a valid image type: %s", response)
                 return
         except Exception as e:
-            logger.exception("Failure validation image type: %s: %s", response, e)
+            pass
 
         try:
             encoded = base64.b64encode(response.data)
@@ -236,7 +230,7 @@ class FeedsearchSpider(Crawler):
             favicon.data_uri = uri
             self.add_favicon(favicon)
         except Exception as e:
-            logger.exception("Failure encoding image: %s: %s", response, e)
+            pass
 
     def create_start_urls(self, urls: List[Union[URL, str]]) -> List[URL]:
         """

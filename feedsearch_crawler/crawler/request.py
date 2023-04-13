@@ -1,7 +1,6 @@
 import asyncio
 import copy
 import json
-import logging
 import uuid
 from asyncio import Semaphore, IncompleteReadError, LimitOverrunError, CancelledError
 from random import random
@@ -14,8 +13,6 @@ from yarl import URL
 
 from feedsearch_crawler.crawler.queueable import Queueable
 from feedsearch_crawler.crawler.response import Response
-
-logger = logging.getLogger(__name__)
 
 
 class Request(Queueable):
@@ -156,26 +153,12 @@ class Request(Queueable):
                 # Fail the response if the content length header is too large.
                 content_length: int = int(resp.headers.get(hdrs.CONTENT_LENGTH, "0"))
                 if content_length > self.max_content_length:
-                    logger.debug(
-                        "Content-Length of Response header %d greater than max %d: %s",
-                        content_length,
-                        self.max_content_length,
-                        self,
-                    )
                     return self._failed_response(413)
 
                 # Read the response content, and fail the response if the actual content size is too large.
                 content_read, actual_content_length = await self._read_response(resp)
                 if not content_read:
                     return self._failed_response(413)
-
-                if content_length and content_length != actual_content_length:
-                    logger.debug(
-                        "Header Content-Length %d different from actual content-length %d: %s",
-                        content_length,
-                        actual_content_length,
-                        self,
-                    )
 
                 # Set encoding automatically from response if not specified.
                 if not self.encoding:
@@ -221,15 +204,12 @@ class Request(Queueable):
                 resp.raise_for_status()
 
         except asyncio.TimeoutError:
-            logger.debug("Failed fetch: url=%s reason=timeout", self.url)
             history.append(self.url)
             response = self._failed_response(408, history)
         except aiohttp.ClientResponseError as e:
-            logger.debug("Failed fetch: url=%s reason=%s", self.url, e.message)
             if not response:
                 response = self._failed_response(e.status, history)
         except Exception as e:
-            logger.debug("Failed fetch: url=%s reason=%s", self.url, e)
             if isinstance(e, CancelledError) and not response:
                 response = self._failed_response(499, history)
         finally:
@@ -282,14 +262,8 @@ class Request(Queueable):
                     break
                 body += chunk
                 if len(body) > self.max_content_length:
-                    logger.debug(
-                        "Content Length of Response body greater than max %d: %s",
-                        self.max_content_length,
-                        self,
-                    )
                     return False, 0
         except (IncompleteReadError, LimitOverrunError) as e:
-            logger.exception("Failed to read Response content: %s: %s", self, e)
             return False, 0
         resp._body = body
         return True, len(body)
@@ -346,7 +320,6 @@ class Request(Queueable):
         try:
             return await self._xml_parser(response_text)
         except Exception as e:
-            logger.exception("Error parsing response xml: %s", e)
             return None
 
     def set_retry(self) -> None:

@@ -1,4 +1,3 @@
-import logging
 from asyncio import PriorityQueue
 from dataclasses import dataclass
 from enum import Enum
@@ -7,8 +6,6 @@ from typing import Any, Union, Dict
 from yarl import URL
 
 from feedsearch_crawler.crawler.queueable import Queueable
-
-logger = logging.getLogger(__name__)
 
 
 # noinspection PyUnresolvedReferences
@@ -188,7 +185,6 @@ def headers_to_dict(headers: Any) -> Dict[str, str]:
     try:
         new_headers.update({k.lower(): v for (k, v) in headers.items()})
     except Exception as e:
-        logger.warning("Exception parsing headers to dict: %s", e)
         pass
     return new_headers
 
@@ -227,8 +223,6 @@ def ignore_aiohttp_ssl_error(loop, aiohttpversion="3.5.4"):
                 and exception.reason == "KRB5_S_INIT"
                 and isinstance(protocol, uvloop.loop.SSLProtocol)
             ):
-                if this_loop.get_debug():
-                    asyncio.log.logger.debug("Ignoring aiohttp SSL KRB5_S_INIT error")
                 return
         if orig_handler is not None:
             orig_handler(this_loop, context)
@@ -254,7 +248,6 @@ def parse_href_to_url(href: str) -> Union[URL, None]:
     try:
         return URL(href)
     except (UnicodeError, ValueError) as e:
-        logger.warning("Failed to encode href: %s : %s", href, e)
         return None
 
 

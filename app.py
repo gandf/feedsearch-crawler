@@ -1,13 +1,8 @@
 import asyncio
-# import logging
 import json
 # import time
-# from pprint import pprint
 from feedsearch_crawler import FeedsearchSpider, sort_urls
-# from feedsearch_crawler import search, output_opml
 from feedsearch_crawler.crawler import coerce_url
-# from datetime import datetime
-# import collections
 import sys
 
 urls = [
@@ -65,7 +60,7 @@ def get_pretty_print(json_object: object):
 
 
 # @profile()
-def run_crawl():
+def run_crawl(setup_type_p: int):
     # user_agent = "Mozilla/5.0 (Compatible; Bot)"
     user_agent = "Mozilla/5.0 (Compatible; Feedsearch Bot)"
     # user_agent = "curl/7.58.0"
@@ -86,54 +81,46 @@ def run_crawl():
     #     "Referrer": "https://www.google.com/",
     # }
 
+    setup_concurrency = 15
+    setup_total_timeout = 3
+    setup_max_depth = 4
+    full_crawl = False
+
+    if setup_type_p == 1:
+        setup_concurrency = 15
+        setup_total_timeout = 8
+        setup_max_depth = 10
+        full_crawl = False
+
+    if setup_type_p == 2:
+        setup_concurrency = 20
+        setup_total_timeout = 20
+        setup_max_depth = 5
+        full_crawl = True
+
     crawler = FeedsearchSpider(
-        concurrency=12,
-        total_timeout=30,
+        concurrency=setup_concurrency,
+        total_timeout=setup_total_timeout,
         request_timeout=30,
         user_agent=user_agent,
         # headers=headers,
         favicon_data_uri=False,
-        max_depth=8,
+        max_depth=setup_max_depth,
         max_retries=2,
         ssl=True,
-        full_crawl=False,
+        full_crawl=full_crawl,
         delay=0,
         try_urls=True,
     )
     crawler.start_urls = urls
-    # crawler.allowed_domains = create_allowed_domains(urls)
     asyncio.run(crawler.crawl())
-    # asyncio.run(crawler.crawl(urls[0]))
-    # items = search(urls, crawl_hosts=True)
 
     items = sort_urls(list(crawler.items))
 
     serialized = [item.serialize() for item in items]
 
-    # items = search(urls[0], concurrency=40, try_urls=False, favicon_data_uri=False)
-    # serialized = [item.serialize() for item in items]
-
     results = get_pretty_print(serialized)
     print(results)
-
-    # site_metas = [item.serialize() for item in crawler.site_metas]
-    # metas = get_pretty_print(site_metas)
-    # print(metas)
-    # pprint(site_metas)
-
-    # pprint(crawler.favicons)
-    # pprint(crawler._duplicate_filter.fingerprints)
-
-    # print(output_opml(items).decode())
-
-    # pprint([result["url"] for result in serialized])
-    # pprint(crawler.get_stats())
-
-    # print(f"Feeds found: {len(items)}")
-    # print(f"SiteMetas: {len(crawler.site_metas)}")
-    # print(f"Favicons fetched: {len(crawler.favicons)}")
-    # pprint(crawler.queue_wait_times)
-    # pprint(list((x.score, x.url) for x in items))
 
 
 def create_allowed_domains(urls_p):
@@ -148,18 +135,11 @@ def create_allowed_domains(urls_p):
 
 
 if __name__ == "__main__":
-    # logger = logging.getLogger("feedsearch_crawler")
-    # logger.setLevel(logging.ERROR)
-    # ch = logging.StreamHandler()
-    # ch.setLevel(logging.ERROR)
-    # formatter = logging.Formatter("%(asctime)s - %(levelname)s - %(name)s - %(message)s [in %(pathname)s:%(lineno)d]")
-    # ch.setFormatter(formatter)
-    # logger.addHandler(ch)
-
     # start = time.perf_counter()
-    if len(sys.argv) > 1:
-        urls = sys.argv[1:]
-        run_crawl()
+    if len(sys.argv) > 2:
+        setup_type = int(sys.argv[1])
+        urls = sys.argv[2:]
+        run_crawl(setup_type)
 
     # duration = int((time.perf_counter() - start) * 1000)
     # print(f"Entire process ran in {duration}ms")

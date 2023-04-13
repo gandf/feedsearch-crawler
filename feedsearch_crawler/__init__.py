@@ -1,13 +1,10 @@
 import asyncio
-import logging
 from xml.etree import ElementTree
 from typing import List, Union
 
 from yarl import URL
 
 from feedsearch_crawler.feed_spider import FeedsearchSpider, FeedInfo
-
-logging.getLogger(__name__).addHandler(logging.NullHandler())
 
 name = "Feedsearch Crawler"
 

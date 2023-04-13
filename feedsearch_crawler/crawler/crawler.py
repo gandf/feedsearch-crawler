@@ -1,7 +1,6 @@
 import asyncio
 import copy
 import inspect
-import logging
 from abc import ABC, abstractmethod
 from collections import OrderedDict
 from fnmatch import fnmatch
@@ -28,7 +27,6 @@ from feedsearch_crawler.crawler.lib import (
 from feedsearch_crawler.crawler.queueable import Queueable
 from feedsearch_crawler.crawler.request import Request
 from feedsearch_crawler.crawler.response import Response
-from feedsearch_crawler.crawler.trace import add_trace_config
 
 try:
     import uvloop
@@ -37,9 +35,6 @@ try:
 except ImportError:
     uvloop = None
     pass
-
-
-logger = logging.getLogger(__name__)
 
 
 class Crawler(ABC):
@@ -93,7 +88,6 @@ class Crawler(ABC):
         delay: float = 0.5,
         max_retries: int = 3,
         ssl: bool = False,
-        trace: bool = False,
         *args,
         **kwargs,
     ):
@@ -114,7 +108,6 @@ class Crawler(ABC):
         :param delay: Time in seconds to delay each HTTP request.
         :param max_retries: Maximum number of retries for each failed HTTP request.
         :param ssl: Enables strict SSL checking.
-        :param trace: Enables aiohttp trace debugging.
         :param args: Additional positional arguments for subclasses.
         :param kwargs: Additional keyword arguments for subclasses.
         """
@@ -147,7 +140,6 @@ class Crawler(ABC):
         self.delay = delay
         self.max_retries = max_retries
         self._ssl = ssl
-        self._trace = trace
 
         # Default set for parsed items.
         self.items: set = set()
@@ -205,7 +197,6 @@ class Crawler(ABC):
         """
         try:
             if request.has_run and not request.should_retry:
-                logger.warning("%s has already run", request)
                 return
 
             start = time.perf_counter()
@@ -217,15 +208,6 @@ class Crawler(ABC):
             dur = int((time.perf_counter() - start) * 1000)
             self._stats_request_durations.append(dur)
             self._stats_request_latencies.append(request.req_latency)
-            logger.debug(
-                "Fetched: url=%s dur=%dms latency=%dms read=%dms status=%s prev=%s",
-                response.url,
-                dur,
-                request.req_latency,
-                request.content_read,
-                response.status_code,
-                response.originator_url,
-            )
 
             if response.ok:
                 self.stats[Stats.REQUESTS_SUCCESSFUL] += 1
@@ -253,9 +235,9 @@ class Crawler(ABC):
                 self._put_queue(request)
 
         except asyncio.CancelledError as e:
-            logger.debug("Cancelled: %s, %s", request, e)
+            pass
         except Exception as e:
-            logger.exception("Exception during %s: %s", request, e)
+            pass
         finally:
             return
 
@@ -271,9 +253,6 @@ class Crawler(ABC):
         :return: None
         """
         if callback_recursion >= self.max_callback_recursion:
-            logger.warning(
-                "Max callback recursion of %d reached", self.max_callback_recursion
-            )
             return
 
         try:
@@ -301,7 +280,7 @@ class Crawler(ABC):
                 await self.process_item(result)
                 self.stats[Stats.ITEMS_PROCESSED] += 1
         except Exception as e:
-            logger.exception(e)
+            pass
 
     def _process_request(self, request: Request) -> None:
         """
@@ -314,7 +293,6 @@ class Crawler(ABC):
             return
 
         self.stats[Stats.REQUESTS_QUEUED] += 1
-        logger.debug("Queue Add: %s", request)
         # Add the Request to the queue for processing.
         self._put_queue(request)
 
@@ -338,7 +316,7 @@ class Crawler(ABC):
                 if fnmatch(host, domain_pattern):
                     return True
         except Exception as e:
-            logger.warning(e)
+            pass
         return False
 
     async def follow(
@@ -388,7 +366,6 @@ class Crawler(ABC):
             url = parse_href_to_url(url)
 
         if not url:
-            logger.warning("Attempted to follow invalid URL: %s", original_url)
             return
 
         history = []
@@ -402,14 +379,12 @@ class Crawler(ABC):
             # Restrict the depth of the Request chain to the maximum depth.
             # This test happens before the URL duplicate check so that the URL might still be reachable by another path.
             if self.max_depth and len(response.history) >= self.max_depth:
-                logger.debug("Max Depth of '%d' reached: %s", self.max_depth, url)
                 return
 
             # Copy the Response history so that it isn't a reference to a mutable object.
             history = copy.deepcopy(response.history)
         else:
             if not url.is_absolute():
-                logger.debug("URL should have domain: %s", url)
                 return
 
             if not url.scheme:
@@ -417,12 +392,10 @@ class Crawler(ABC):
 
         # The URL scheme must be in the list of allowed schemes.
         if self.allowed_schemes and url.scheme not in self.allowed_schemes:
-            logger.debug("URI Scheme '%s' not allowed: %s", url.scheme, url)
             return
 
         # The URL host must be in the list of allowed domains.
         if not allow_domain and not self.is_allowed_domain(url):
-            logger.debug("Domain '%s' not allowed: %s", url.host, url)
             return
 
         # Check if URL is not already seen, and add it to the duplicate filter seen list.
@@ -499,15 +472,10 @@ class Crawler(ABC):
             while True:
                 self._stats_queue_sizes.append(self._request_queue.qsize())
                 item: Queueable = await self._request_queue.get()
-                # logger.debug("Priority: %s Item: %s", item.priority, item)
                 if item.get_queue_wait_time():
-                    # logger.debug(
-                    #     "Waited: %sms Item: %s", item.get_queue_wait_time(), item
-                    # )
                     self._stats_queue_wait_times.append(item.get_queue_wait_time())
 
                 if self._session.closed:
-                    logger.debug("Session is closed. Cannot run %s", item)
                     continue
 
                 try:
@@ -520,11 +488,11 @@ class Crawler(ABC):
                             item.result, item.callback_recursion
                         )
                 except Exception as e:
-                    logger.exception("Error handling item: %s : %s", item, e)
+                    pass
                 finally:
                     self._request_queue.task_done()
         except asyncio.CancelledError:
-            logger.debug("Cancelled Worker: %s", task_num)
+            pass
 
     @staticmethod
     async def _run_callback(callback, *args, **kwargs) -> None:
@@ -542,8 +510,6 @@ class Crawler(ABC):
             await callback(*args, **kwargs)
         elif inspect.isfunction(callback):
             callback(*args, **kwargs)
-        else:
-            logger.warning("Callback %s must be a coroutine or function", callback)
 
     def create_start_urls(self, urls: List[Union[URL, str]]) -> List[URL]:
         """
@@ -660,10 +626,6 @@ class Crawler(ABC):
         # Create the Semaphore for controlling HTTP Request concurrency within the asyncio loop.
         self._semaphore = asyncio.Semaphore(self.concurrency)
 
-        trace_configs = []
-        if self._trace:
-            trace_configs.append(add_trace_config())
-
         conn = aiohttp.TCPConnector(
             limit=0, ssl=self._ssl, ttl_dns_cache=self.total_timeout.total
         )
@@ -672,7 +634,6 @@ class Crawler(ABC):
             timeout=self.total_timeout,
             headers=self.headers,
             connector=conn,
-            trace_configs=trace_configs,
         )
 
         # Create a Request for each start URL and add it to the Request Queue.
@@ -695,7 +656,6 @@ class Crawler(ABC):
                     self._request_queue.join(), timeout=self.total_timeout.total
                 )
         except asyncio.TimeoutError:
-            logger.debug("Timed out after %s seconds", self.total_timeout.total)
             self._request_queue.clear()
         finally:
             # Make sure all workers are cancelled.
@@ -714,10 +674,3 @@ class Crawler(ABC):
         self.stats[Stats.TOTAL_DURATION] = duration
 
         self.record_statistics()
-
-        logger.info(
-            "Crawl finished: requests=%s time=%dms",
-            self.stats[Stats.REQUESTS_QUEUED],
-            duration,
-        )
-        logger.debug("Stats: %s", self.stats)

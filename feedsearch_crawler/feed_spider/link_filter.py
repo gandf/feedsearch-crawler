@@ -1,4 +1,3 @@
-import logging
 import pathlib
 import re
 from typing import Optional, Tuple, List
@@ -63,9 +62,6 @@ low_priority_urls: List[str] = [
 
 # Link Types that should always be searched for feeds
 feed_link_types: List[str] = ["application/json", "rss", "atom", "rdf"]
-
-
-logger = logging.getLogger(__name__)
 
 
 class LinkFilter:
